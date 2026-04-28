@@ -3,8 +3,7 @@ const { chromium } = require('playwright');
 (async () => {
 
     const browser = await chromium.launch({
-        headless: false,
-        slowMo: 500
+        headless: false
     });
 
     const context = await browser.newContext({
@@ -13,21 +12,22 @@ const { chromium } = require('playwright');
 
     const page = await context.newPage();
 
+    page.setDefaultTimeout(30000);
+
     await page.goto(
         'https://www.facebook.com/groups/mku.cfs',
         {
-            waitUntil: 'domcontentloaded',
-            timeout: 120000
+            waitUntil: 'domcontentloaded'
         }
     );
 
-    await page.waitForTimeout(8000);
+    await page.waitForTimeout(3000);
 
-    let processed = new Set();
-    let collected = 0;
     const MAX_POSTS = 1;
 
-    let allPosts = [];
+    let collected = 0;
+    let processed = new Set();
+
 
 
     while (collected < MAX_POSTS) {
@@ -39,25 +39,21 @@ const { chromium } = require('playwright');
 
         for (let post of posts) {
 
-            if (collected >= MAX_POSTS)
-                break;
-
+            if (collected >= MAX_POSTS) break;
 
             let pid =
                 await post.getAttribute(
                     'aria-posinset'
                 );
 
-            if (
-                pid &&
-                processed.has(pid)
-            ) continue;
+            if (pid && processed.has(pid))
+                continue;
 
             processed.add(pid);
 
 
             await post.scrollIntoViewIfNeeded();
-            await page.waitForTimeout(2000);
+            await page.waitForTimeout(500);
 
 
 
@@ -70,21 +66,40 @@ const { chromium } = require('playwright');
 
 
 
-            // ===== TÁC GIẢ =====
+            // AUTHOR - dùng evaluate để lấy text từ span có chứa "Bài viết của"
+            // AUTHOR - Chiến thuật quét sâu
             try {
+                const authorText = await post.evaluate((el) => {
+                    // Cách 1: Tìm dựa trên nội dung text (Tiếng Việt)
+                    const spans = Array.from(el.querySelectorAll('span'));
+                    const authorLabel = spans.find(s => s.innerText.includes('Bài viết của'));
 
-                data.author =
-                    (
-                        await post.locator(
-                            'h2 strong,h3 strong,strong'
-                        ).first().innerText()
-                    ).trim();
+                    if (authorLabel) {
+                        // Nếu text nằm chung trong 1 span kiểu "Bài viết của Tên"
+                        if (authorLabel.innerText.length > 13) {
+                            return authorLabel.innerText.replace('Bài viết của', '').trim();
+                        }
 
-            } catch { }
+                        // Nếu tên nằm ở span ngay kế bên (sibling)
+                        const nextSpan = authorLabel.nextElementSibling;
+                        if (nextSpan) return nextSpan.innerText.trim();
 
+                        // Nếu tên nằm trong các thẻ con sâu hơn
+                        return authorLabel.parentElement.innerText.replace('Bài viết của', '').trim();
+                    }
 
+                    // Cách 2: Dự phòng (Fallback) - Thường tên tác giả là link đầu tiên trong phần header
+                    const firstLink = el.querySelector('h2 a, strong a, span[role="link"]');
+                    return firstLink ? firstLink.innerText.trim() : '';
+                });
 
-            // ===== NỘI DUNG =====
+                data.author = authorText;
+            } catch (err) {
+                console.log('Lỗi lấy author:', err.message);
+                data.author = '';
+            }
+
+            // CONTENT
             try {
 
                 let texts =
@@ -94,14 +109,11 @@ const { chromium } = require('playwright');
 
                 data.content =
                     texts.filter(x =>
-
                         x.trim() &&
                         x !== data.author &&
                         !x.includes('Thích') &&
-                        !x.includes('Bình luận') &&
-                        !x.includes('Phù hợp nhất')
-
-                    )[0] || "";
+                        !x.includes('Bình luận')
+                    )[0] || '';
 
             } catch {
                 continue;
@@ -109,9 +121,7 @@ const { chromium } = require('playwright');
 
 
 
-            // ===== LINK BÀI VIẾT =====
-
-            // ===== LINK BÀI VIẾT CHUẨN =====
+            // LINK
             try {
 
                 let postLink =
@@ -137,7 +147,7 @@ const { chromium } = require('playwright');
             } catch { }
 
 
-            // ===== BÌNH LUẬN =====
+            // COMMENTS
             try {
 
                 let btn =
@@ -145,15 +155,13 @@ const { chromium } = require('playwright');
                         'text=Bình luận'
                     ).first();
 
-
-                if (await btn.count() > 0) {
+                if (await btn.count()) {
 
                     await btn.click();
 
                     await page.waitForTimeout(
-                        5000
+                        2000
                     );
-
 
                     let dialog =
                         page.locator(
@@ -161,21 +169,30 @@ const { chromium } = require('playwright');
                         ).last();
 
 
-                    let commentBlocks =
+                    let blocks =
                         await dialog.locator(
                             'div.xwib8y2.xpdmqnj.x1g0dm76.x1y1aw1k'
                         ).all();
 
 
-                    let seenComments =
+                    let seen =
                         new Set();
 
 
-                    for (let c of commentBlocks) {
+                    for (
+                        let i = 0;
+                        i < Math.min(
+                            blocks.length,
+                            5
+                        );
+                        i++
+                    ) {
 
                         try {
 
-                            let commenter =
+                            let c = blocks[i];
+
+                            let user =
                                 (
                                     await c.locator(
                                         'span.x1nxh6w3'
@@ -183,7 +200,7 @@ const { chromium } = require('playwright');
                                 ).trim();
 
 
-                            let commentText =
+                            let text =
                                 (
                                     await c.locator(
                                         'div[dir="auto"][style*="text-align"]'
@@ -191,80 +208,38 @@ const { chromium } = require('playwright');
                                 ).trim();
 
 
+                            let row =
+                                `${user}: ${text}`;
+
 
                             if (
-                                commenter &&
-                                commentText &&
-                                commenter !== commentText &&
-                                !commenter.includes(
-                                    'Confession'
-                                ) &&
-                                !commenter.includes(
-                                    'Người tham gia'
-                                )
+                                user &&
+                                text &&
+                                !seen.has(row)
                             ) {
-
-                                let row =
-                                    `${commenter}: ${commentText}`;
-
-
-                                if (
-                                    !seenComments.has(row)
-                                ) {
-                                    seenComments.add(
-                                        row
-                                    );
-
-                                    data.comments.push(
-                                        row
-                                    );
-                                }
-
+                                seen.add(row);
+                                data.comments.push(row);
                             }
 
-                        } catch (e) { }
+                        } catch { }
 
                     }
 
 
-
-                    // ===== ĐÓNG POPUP =====
                     try {
-
-                        let closeBtn =
-                            page.locator(
-                                '[aria-label="Đóng"],[aria-label="Close"]'
-                            ).first();
-
-
-                        if (
-                            await closeBtn.count() > 0
-                        ) {
-                            await closeBtn.click();
-                        }
-                        else {
-                            await page.keyboard.press(
-                                'Escape'
-                            );
-                        }
-
-
-                        await page.waitForTimeout(
-                            1500
+                        await page.keyboard.press(
+                            'Escape'
                         );
-
                     } catch { }
 
                 }
 
-            } catch (e) { }
+            } catch { }
 
 
-
-            allPosts.push(data);
 
             console.log(
-                "\n Bài " + (collected + 1)
+                '\n📦 Bài ' + (collected + 1)
             );
 
             console.log(
@@ -281,16 +256,15 @@ const { chromium } = require('playwright');
         }
 
 
-
         if (collected < MAX_POSTS) {
 
             await page.mouse.wheel(
                 0,
-                5000
+                8000
             );
 
             await page.waitForTimeout(
-                5000
+                1500
             );
 
         }
@@ -298,13 +272,9 @@ const { chromium } = require('playwright');
     }
 
 
-
-    console.log('\n====================');
     console.log(
-        'Tổng số bài lấy được:',
-        allPosts.length
+        `\n Tổng số bài: ${collected}`
     );
-    console.log('====================');
 
     await browser.close();
 
