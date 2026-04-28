@@ -23,7 +23,7 @@ const { chromium } = require('playwright');
 
     await page.waitForTimeout(3000);
 
-    const MAX_POSTS = 1;
+    const MAX_POSTS = 5;
 
     let collected = 0;
     let processed = new Set();
@@ -66,8 +66,7 @@ const { chromium } = require('playwright');
 
 
 
-            // AUTHOR - dùng evaluate để lấy text từ span có chứa "Bài viết của"
-            // AUTHOR - Chiến thuật quét sâu
+            // AUTHOR 
             try {
                 const authorText = await post.evaluate((el) => {
                     // Cách 1: Tìm dựa trên nội dung text (Tiếng Việt)
