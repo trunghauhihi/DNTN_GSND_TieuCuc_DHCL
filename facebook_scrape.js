@@ -25,7 +25,7 @@ const { chromium } = require('playwright');
 
     let processed = new Set();
     let collected = 0;
-    const MAX_POSTS = 5;
+    const MAX_POSTS = 1;
 
     let allPosts = [];
 
@@ -110,23 +110,31 @@ const { chromium } = require('playwright');
 
 
             // ===== LINK BÀI VIẾT =====
+
+            // ===== LINK BÀI VIẾT CHUẨN =====
             try {
 
-                let links =
+                let postLink =
                     await post.locator(
-                        'a[href*="/posts/"],a[href*="permalink"],a[role="link"][href*="/groups/"]'
-                    ).evaluateAll(
-                        els => els.map(
-                            a => a.href
-                        )
-                    );
+                        'a[href*="/posts/"]'
+                    ).first().getAttribute('href');
 
-                if (links.length) {
-                    data.post_url = links[0];
+                if (postLink) {
+
+                    // nếu href tương đối thì thêm domain
+                    if (postLink.startsWith('/')) {
+                        postLink =
+                            'https://www.facebook.com' +
+                            postLink;
+                    }
+
+                    // bỏ ?comment_id....
+                    data.post_url =
+                        postLink.split('?')[0];
+
                 }
 
             } catch { }
-
 
 
             // ===== BÌNH LUẬN =====
