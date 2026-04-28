@@ -1,9 +1,16 @@
 const { chromium } = require('playwright');
+const axios = require('axios');
 
 (async () => {
 
+    const WEBHOOK =
+        'https://n8n.mku.edu.vn/webhook-test/facebook-monitor';
     const browser = await chromium.launch({
-        headless: false
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox'
+        ]
     });
 
     const context = await browser.newContext({
@@ -23,23 +30,26 @@ const { chromium } = require('playwright');
 
     await page.waitForTimeout(3000);
 
-    const MAX_POSTS = 5;
+    const MAX_POSTS = 3;
 
     let collected = 0;
     let processed = new Set();
-
+    let allPosts = [];
 
 
     while (collected < MAX_POSTS) {
 
-        let posts = await page.locator(
-            'div[role="feed"] div[aria-posinset]'
-        ).all();
+        let posts =
+            await page.locator(
+                'div[role="feed"] div[aria-posinset]'
+            ).all();
 
 
         for (let post of posts) {
 
-            if (collected >= MAX_POSTS) break;
+            if (collected >= MAX_POSTS)
+                break;
+
 
             let pid =
                 await post.getAttribute(
@@ -56,7 +66,6 @@ const { chromium } = require('playwright');
             await page.waitForTimeout(500);
 
 
-
             let data = {
                 author: "",
                 content: "",
@@ -66,39 +75,71 @@ const { chromium } = require('playwright');
 
 
 
-            // AUTHOR 
+            /* AUTHOR */
             try {
-                const authorText = await post.evaluate((el) => {
-                    // Cách 1: Tìm dựa trên nội dung text (Tiếng Việt)
-                    const spans = Array.from(el.querySelectorAll('span'));
-                    const authorLabel = spans.find(s => s.innerText.includes('Bài viết của'));
 
-                    if (authorLabel) {
-                        // Nếu text nằm chung trong 1 span kiểu "Bài viết của Tên"
-                        if (authorLabel.innerText.length > 13) {
-                            return authorLabel.innerText.replace('Bài viết của', '').trim();
+                const authorText =
+                    await post.evaluate(el => {
+
+                        const spans =
+                            Array.from(
+                                el.querySelectorAll('span')
+                            );
+
+                        const label =
+                            spans.find(
+                                s => s.innerText.includes(
+                                    'Bài viết của'
+                                )
+                            );
+
+                        if (label) {
+
+                            if (label.innerText.length > 13) {
+                                return label.innerText
+                                    .replace(
+                                        'Bài viết của',
+                                        ''
+                                    )
+                                    .trim();
+                            }
+
+                            if (label.nextElementSibling) {
+                                return label
+                                    .nextElementSibling
+                                    .innerText
+                                    .trim();
+                            }
+
+                            return label.parentElement
+                                .innerText
+                                .replace(
+                                    'Bài viết của',
+                                    ''
+                                )
+                                .trim();
                         }
 
-                        // Nếu tên nằm ở span ngay kế bên (sibling)
-                        const nextSpan = authorLabel.nextElementSibling;
-                        if (nextSpan) return nextSpan.innerText.trim();
+                        const fallback =
+                            el.querySelector(
+                                'h2 a,strong a,span[role="link"]'
+                            );
 
-                        // Nếu tên nằm trong các thẻ con sâu hơn
-                        return authorLabel.parentElement.innerText.replace('Bài viết của', '').trim();
-                    }
+                        return fallback ?
+                            fallback.innerText.trim() :
+                            '';
 
-                    // Cách 2: Dự phòng (Fallback) - Thường tên tác giả là link đầu tiên trong phần header
-                    const firstLink = el.querySelector('h2 a, strong a, span[role="link"]');
-                    return firstLink ? firstLink.innerText.trim() : '';
-                });
+                    });
 
                 data.author = authorText;
-            } catch (err) {
-                console.log('Lỗi lấy author:', err.message);
-                data.author = '';
+
+            } catch {
+                data.author = "";
             }
 
-            // CONTENT
+
+
+            /* CONTENT */
             try {
 
                 let texts =
@@ -108,11 +149,16 @@ const { chromium } = require('playwright');
 
                 data.content =
                     texts.filter(x =>
+
                         x.trim() &&
                         x !== data.author &&
                         !x.includes('Thích') &&
                         !x.includes('Bình luận')
+
                     )[0] || '';
+
+                if (!data.content)
+                    continue;
 
             } catch {
                 continue;
@@ -120,33 +166,37 @@ const { chromium } = require('playwright');
 
 
 
-            // LINK
+            /* POST URL */
             try {
 
-                let postLink =
+                let href =
                     await post.locator(
                         'a[href*="/posts/"]'
-                    ).first().getAttribute('href');
+                    )
+                        .first()
+                        .getAttribute(
+                            'href'
+                        );
 
-                if (postLink) {
+                if (href) {
 
-                    // nếu href tương đối thì thêm domain
-                    if (postLink.startsWith('/')) {
-                        postLink =
-                            'https://www.facebook.com' +
-                            postLink;
+                    if (
+                        href.startsWith('/')
+                    ) {
+                        href =
+                            'https://www.facebook.com' + href;
                     }
 
-                    // bỏ ?comment_id....
                     data.post_url =
-                        postLink.split('?')[0];
+                        href.split('?')[0];
 
                 }
 
             } catch { }
 
 
-            // COMMENTS
+
+            /* COMMENTS */
             try {
 
                 let btn =
@@ -167,22 +217,19 @@ const { chromium } = require('playwright');
                             'div[role="dialog"]'
                         ).last();
 
-
                     let blocks =
                         await dialog.locator(
                             'div.xwib8y2.xpdmqnj.x1g0dm76.x1y1aw1k'
                         ).all();
 
-
                     let seen =
                         new Set();
-
 
                     for (
                         let i = 0;
                         i < Math.min(
                             blocks.length,
-                            5
+                            20
                         );
                         i++
                     ) {
@@ -195,21 +242,21 @@ const { chromium } = require('playwright');
                                 (
                                     await c.locator(
                                         'span.x1nxh6w3'
-                                    ).first().innerText()
+                                    ).first()
+                                        .innerText()
                                 ).trim();
-
 
                             let text =
                                 (
                                     await c.locator(
                                         'div[dir="auto"][style*="text-align"]'
-                                    ).first().innerText()
+                                    )
+                                        .first()
+                                        .innerText()
                                 ).trim();
-
 
                             let row =
                                 `${user}: ${text}`;
-
 
                             if (
                                 user &&
@@ -217,7 +264,10 @@ const { chromium } = require('playwright');
                                 !seen.has(row)
                             ) {
                                 seen.add(row);
-                                data.comments.push(row);
+
+                                data.comments.push(
+                                    row
+                                );
                             }
 
                         } catch { }
@@ -225,9 +275,13 @@ const { chromium } = require('playwright');
                     }
 
 
+                    /* đóng popup */
                     try {
                         await page.keyboard.press(
                             'Escape'
+                        );
+                        await page.waitForTimeout(
+                            1000
                         );
                     } catch { }
 
@@ -237,8 +291,10 @@ const { chromium } = require('playwright');
 
 
 
+            allPosts.push(data);
+
             console.log(
-                '\n📦 Bài ' + (collected + 1)
+                `\n📦 Bài ${collected + 1}`
             );
 
             console.log(
@@ -249,10 +305,10 @@ const { chromium } = require('playwright');
                 )
             );
 
-
             collected++;
 
         }
+
 
 
         if (collected < MAX_POSTS) {
@@ -267,6 +323,48 @@ const { chromium } = require('playwright');
             );
 
         }
+
+    }
+
+
+
+    /* GỬI N8N WEBHOOK */
+    try {
+
+        console.log('\nGửi dữ liệu sang n8n...');
+
+        await axios.post(
+            WEBHOOK,
+            {
+                total_posts: allPosts.length,
+                scraped_at: new Date().toISOString(),
+                posts: allPosts
+            },
+            {
+                timeout: 10000
+            }
+        );
+
+        console.log(' Gửi webhook thành công');
+
+    }
+    catch (e) {
+
+        console.log(
+            'Webhook lỗi:',
+            e.message
+        );
+
+    }
+    finally {
+
+        console.log(
+            `\n Tổng số bài: ${collected}`
+        );
+
+        await browser.close();
+
+        process.exit(0);
 
     }
 
