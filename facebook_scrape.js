@@ -4,9 +4,9 @@ const axios = require('axios');
 (async () => {
 
     const WEBHOOK =
-        'https://n8n.mku.edu.vn/webhook-test/facebook-monitor';
+        'https://n8n.mku.edu.vn/webhook/facebook-monitor';
     const browser = await chromium.launch({
-        headless: true,
+        headless: false,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox'
@@ -30,7 +30,7 @@ const axios = require('axios');
 
     await page.waitForTimeout(3000);
 
-    const MAX_POSTS = 3;
+    const MAX_POSTS = 20;
 
     let collected = 0;
     let processed = new Set();
@@ -294,7 +294,7 @@ const axios = require('axios');
             allPosts.push(data);
 
             console.log(
-                `\n📦 Bài ${collected + 1}`
+                `\n Bài ${collected + 1}`
             );
 
             console.log(
