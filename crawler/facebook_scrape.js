@@ -6,7 +6,7 @@ const axios = require('axios');
     const WEBHOOK =
         'https://n8n.mku.edu.vn/webhook/facebook-monitor';
     const browser = await chromium.launch({
-        headless: false,
+        headless: true,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox'
@@ -30,7 +30,7 @@ const axios = require('axios');
 
     await page.waitForTimeout(3000);
 
-    const MAX_POSTS = 20;
+    const MAX_POSTS = 5;
 
     let collected = 0;
     let processed = new Set();
