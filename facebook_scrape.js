@@ -4,7 +4,7 @@ const axios = require('axios');
 (async () => {
 
     const WEBHOOK =
-        'https://n8n.mku.edu.vn/webhook/facebook-monitor';
+        'https://n8n.mku.edu.vn/webhook-test/facebook-monitor';
     const browser = await chromium.launch({
         headless: true,
         args: [
@@ -30,7 +30,7 @@ const axios = require('axios');
 
     await page.waitForTimeout(3000);
 
-    const MAX_POSTS = 5;
+    const MAX_POSTS = 2;
 
     let collected = 0;
     let processed = new Set();
