@@ -1,0 +1,1717 @@
+{
+  "name": "GSND_MKU",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "decd0a3d-ddc5-45c3-a56f-ee1f14705019",
+              "name": "max_results",
+              "type": "number",
+              "value": 20
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "95e69151-10f7-4b43-aa28-e66eea11cea8",
+      "name": "Cấu hình từ khóa giám sát",
+      "type": "n8n-nodes-base.set",
+      "position": [
+        -220,
+        280
+      ],
+      "typeVersion": 3.4
+    },
+    {
+      "parameters": {
+        "url": "https://news.google.com/rss/search?q=%22%C4%90%E1%BA%A1i%20h%E1%BB%8Dc%20C%E1%BB%ADu%20Long%22&hl=vi-VN&gl=VN&ceid=VN:vi",
+        "options": {}
+      },
+      "id": "f41e4955-3149-4911-a332-1f031f34fa57",
+      "name": "Thu thập dữ liệu Google News (RSS)",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "position": [
+        20,
+        220
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lấy toàn bộ dữ liệu từ RSS\nconst items = $input.all();\nconst results = [];\n\n// Duyệt từng bài viết RSS\nfor (const item of items) {\n  const post = item.json;\n\n  results.push({\n    json: {\n      // Thông tin chính\n      tieuDe: post.title || 'Không có tiêu đề',\n      urlBaiViet: post.link || '',\n      nguonTin: 'Google News - ' + (post.creator || 'Nguồn tin'),\n      ngayDang: post.pubDate || post.isoDate || new Date().toISOString(),\n\n      // Dữ liệu RSS gốc (để tham khảo)\n      rss_description: post.contentSnippet || post.description || '',\n      rss_content: post.content || ''\n    }\n  });\n}\n\n// Log số lượng bài lấy được\nconsole.log('Tìm thấy', results.length, 'bài viết từ RSS');\n\n// Trả kết quả cho node tiếp theo\nreturn results;\n"
+      },
+      "id": "87a88ea0-668f-4b6b-abb6-0ee95b953f1f",
+      "name": "Phân tích và trích xuất bài báo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lấy toàn bộ item đầu vào\nconst items = $input.all();\n\n// ================== DEBUG ==================\nconsole.log('=== DEBUG DỮ LIỆU ĐẦU VÀO ===');\nitems.forEach((item, i) => {\n  console.log(`Item ${i}:`, Object.keys(item.json));\n});\n\n// ================== 1. BÀI VIẾT CŨ (Sheets) ==================\nconst oldArticles = items.filter(item =>\n  item.json.TieuDe && item.json.UrlBaiViet\n);\nconsole.log('[CŨ] Tổng bài từ Sheets:', oldArticles.length);\n\n// ================== 2. BÀI VIẾT MỚI ==================\nconst newArticles = items.filter(item =>\n  item.json.tieuDe && item.json.urlBaiViet\n);\nconsole.log('[MỚI] Tổng bài mới:', newArticles.length);\n\n// Không có bài mới → kết thúc\nif (newArticles.length === 0) {\n  console.log('Không có bài viết mới');\n  return [];\n}\n\n// ================== 3. TẠO DANH SÁCH LINK CŨ ==================\nconst oldLinks = new Set();\n\nfor (const item of oldArticles) {\n  const link = item.json.UrlBaiViet?.trim().toLowerCase();\n  if (link) oldLinks.add(link);\n}\n\nconsole.log('📌 Tổng link cũ:', oldLinks.size);\n\n// ================== 4. LỌC BÀI KHÔNG TRÙNG ==================\nconst uniqueArticles = [];\n\nfor (const item of newArticles) {\n  const article = item.json;\n  const title = article.tieuDe || 'Không có tiêu đề';\n  const link = article.urlBaiViet?.trim().toLowerCase();\n\n  if (link && oldLinks.has(link)) {\n    console.log('TRÙNG LINK:', title);\n    continue;\n  }\n\n  console.log('✅ BÀI MỚI:', title);\n  uniqueArticles.push(item);\n}\n\n// ================== 5. KẾT QUẢ ==================\nconsole.log(\n  `KẾT QUẢ: ${uniqueArticles.length}/${newArticles.length} bài mới`\n);\n\n// Trả về bài không trùng\nreturn uniqueArticles;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        380
+      ],
+      "id": "161db5fa-26ab-4204-9369-b150fc527391",
+      "name": "Kiểm tra bài viết đã tồn tại",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "85f14964-0cea-4cc7-82e6-175aa36907f3",
+              "leftValue": "={{ $json.tieuDe }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        260
+      ],
+      "id": "a5a40d5c-7761-4ee7-b59a-d1c3f9bea3b1",
+      "name": "Lọc bài viết hợp lệ"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "1Ix6albGGVQJoWdHZvy9uxf04gRYoF4RkTTFfvXvEJzs",
+          "mode": "list",
+          "cachedResultName": "RSS_BaiViet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ix6albGGVQJoWdHZvy9uxf04gRYoF4RkTTFfvXvEJzs/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ix6albGGVQJoWdHZvy9uxf04gRYoF4RkTTFfvXvEJzs/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        20,
+        420
+      ],
+      "id": "6ec4c1e4-3948-4812-8d00-2925abfc08e8",
+      "name": "Đọc dữ liệu Google News đã lưu (Sheets)",
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        280,
+        460
+      ],
+      "id": "62bc8f1d-0793-4978-8a5e-1f0184bf86cf",
+      "name": "Gộp dữ liệu Google News mới và cũ"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ketQua = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const ngayXuLy = new Date().toLocaleString('vi-VN');\n\n  // Hàm lấy giá trị an toàn\n  const getField = (obj, possibleKeys, defaultValue = '') => {\n    if (!obj) return defaultValue;\n    for (const key of possibleKeys) {\n      if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') return obj[key];\n    }\n    return defaultValue;\n  };\n\n  // Xác định trường chứa output của AI (n8n thường để ở output, text, hoặc content)\n  let rawOutput = getField(data, ['output', 'text', 'message', 'content'], '');\n  let parsed = {};\n  \n  if (rawOutput && typeof rawOutput === 'string' && rawOutput.trim() !== '') {\n    let cleaned = rawOutput.trim();\n    \n    // 1. Loại bỏ markdown code block (```json ... ```)\n    cleaned = cleaned.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/```\\s*$/i, '').trim();\n    \n    // 2. FIX LỖI CRITICAL: Xử lý n8n expression bị AI in ra nguyên văn gây lỗi JSON\n    // Ví dụ: {{ $json.TongSoBinhLuan }} -> Thay thành 0 để JSON hợp lệ\n    cleaned = cleaned.replace(/\\{\\{\\s*[^}]+\\s*\\}\\}/g, '0');\n    \n    // Lấy nội dung trong cặp ngoặc nhọn\n    let jsonString = cleaned;\n    if (!cleaned.startsWith('{')) {\n      const match = cleaned.match(/\\{[\\s\\S]*\\}/);\n      if (match) jsonString = match[0];\n    }\n    \n    try {\n      parsed = JSON.parse(jsonString);\n    } catch (e) {\n      console.error('Lỗi parse JSON:', e.message);\n    }\n  } else if (typeof rawOutput === 'object') {\n    parsed = rawOutput;\n  }\n\n  // --- XỬ LÝ DỮ LIỆU ---\n  \n  // Chuẩn hóa mảng Chủ Đề\n  let chuDeArray = [];\n  const rawChuDe = getField(parsed, ['ChuDe', 'Chủ đề', 'topic'], '');\n  if (Array.isArray(rawChuDe)) {\n    chuDeArray = rawChuDe;\n  } else if (typeof rawChuDe === 'string' && rawChuDe !== '') {\n    chuDeArray = [rawChuDe];\n  } else {\n    chuDeArray = ['CHƯA XÁC ĐỊNH'];\n  }\n  \n  // Tổng hợp lại thành object cuối cùng\n  const result = {\n    // Mapping: Lấy từ JSON AI sinh ra, nếu không có thì lấy thẳng từ input node trước\n    NoiDungBaiViet: getField(parsed, ['NoiDung', 'NoiDungBaiViet', 'Nội dung bài viết'], getField(data, ['NoiDungBaiViet', 'TieuDe'], '')),\n    URL: getField(parsed, ['URLBaiViet', 'URL', 'url'], getField(data, ['UrlBaiViet', 'URL'], '')),\n    NgayDang: getField(parsed, ['NgayDang'], getField(data, ['NgayDang'], '')),\n    \n    // Các trường AI phân tích\n    ChuDe: chuDeArray,\n    LinhVuc: getField(parsed, ['LinhVuc', 'Lĩnh vực'], 'CHƯA XÁC ĐỊNH'),\n    CoTiengLong_MiaMai: getField(parsed, ['CoTiengLong_MiaMai', 'coTiengLongMiaMai'], false) === true,\n    PhanTramTieuCuc: Number(getField(parsed, ['PhanTramTieuCuc', 'phanTramTieuCuc'], 0)) || 0,\n    DanhGia: getField(parsed, ['DanhGia', 'Đánh giá'], 'CHƯA XÁC ĐỊNH'),\n    PhanTichBaiViet: getField(parsed, ['PhanTichBaiViet', 'Phân tích bài viết'], ''),\n    LyDoDanhGia: getField(parsed, ['LyDoDanhGia', 'Lý do đánh giá'], ''),\n    MucDoRuiRo: getField(parsed, ['MucDoRuiRo', 'Mức độ rủi ro'], 'CHƯA XÁC ĐỊNH'),\n    DeXuatXuLy: getField(parsed, ['DeXuatXuLy', 'Đề xuất xử lý'], 'Không cần xử lý'),\n    \n    NgayXuLy: ngayXuLy\n  };\n  \n  ketQua.push({ json: result });\n}\n\nreturn ketQua;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1980,
+        300
+      ],
+      "id": "2c1807ab-360c-4c54-a9a1-7c41894d1f2b",
+      "name": "Chuẩn hóa dữ liệu Google News",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Ix6albGGVQJoWdHZvy9uxf04gRYoF4RkTTFfvXvEJzs",
+          "mode": "list",
+          "cachedResultName": "RSS_BaiViet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ix6albGGVQJoWdHZvy9uxf04gRYoF4RkTTFfvXvEJzs/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ix6albGGVQJoWdHZvy9uxf04gRYoF4RkTTFfvXvEJzs/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "TieuDe": "={{ $json.tieuDe }}",
+            "UrlBaiViet": "={{ $json.urlBaiViet }}",
+            "NguonTin": "={{ $json.nguonTin }}",
+            "NgayDang": "={{ $json.ngayDang }}",
+            "MoTa": "={{ $json.rss_description }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "TieuDe",
+              "displayName": "TieuDe",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "UrlBaiViet",
+              "displayName": "UrlBaiViet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NguonTin",
+              "displayName": "NguonTin",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NgayDang",
+              "displayName": "NgayDang",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MoTa",
+              "displayName": "MoTa",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "49941980-3be7-4a58-ad88-f9d839f049ab",
+      "name": "Lưu bài viết Google News vào Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "position": [
+        880,
+        240
+      ],
+      "typeVersion": 4.5,
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU",
+          "mode": "list",
+          "cachedResultName": "BaiVietDanhGia",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "NoiDung": "={{ $('Lưu bài viết Google News vào Sheets').item.json.TieuDe }}",
+            "URL": "={{ $('Lưu bài viết Google News vào Sheets').item.json.UrlBaiViet }}",
+            "ChuDe": "={{ $json.ChuDe[0] }}",
+            "CoTiengLong_MiaMai": "={{ $json.CoTiengLong_MiaMai }}",
+            "PhanTramTieuCuc": "={{ $json.PhanTramTieuCuc }}",
+            "DanhGia": "={{ $json.DanhGia }} Phân tích bài viết: {{ $json.PhanTichBaiViet }} \nLý do phân tích: {{ $json.LyDoDanhGia }}",
+            "MucDoRuiRo": "={{ $json.MucDoRuiRo }}",
+            "DeXuatXuLy": "={{ $json.DeXuatXuLy }}",
+            "NgayXuLy": "={{ $json.NgayXuLy }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "TacGia",
+              "displayName": "TacGia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NoiDung",
+              "displayName": "NoiDung",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "BinhLuan",
+              "displayName": "BinhLuan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ChuDe",
+              "displayName": "ChuDe",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CoTiengLong_MiaMai",
+              "displayName": "CoTiengLong_MiaMai",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PhanTramTieuCuc",
+              "displayName": "PhanTramTieuCuc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DanhGia",
+              "displayName": "DanhGia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MucDoRuiRo",
+              "displayName": "MucDoRuiRo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DeXuatXuLy",
+              "displayName": "DeXuatXuLy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NgayXuLy",
+              "displayName": "NgayXuLy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        2220,
+        300
+      ],
+      "id": "201a87a3-eb62-47e8-8424-abd2ffc09be6",
+      "name": "Lưu kết quả đánh giá Google News",
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "haulailaptrinh@gmail.com",
+        "toEmail": "trunghau231204@gmail.com",
+        "subject": "Báo cáo giám sát hàng ngày - ĐH Cửu Long",
+        "emailFormat": "html",
+        "html": "=<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background: #f4f7f6;\n      padding: 20px;\n    }\n    .container {\n      background: #fff;\n      padding: 25px;\n      border-radius: 10px;\n      max-width: 650px;\n      margin: auto;\n      border-top: 5px solid #b00020;\n    }\n    h2 {\n      color: #b00020;\n      margin-bottom: 15px;\n    }\n    .label {\n      font-weight: bold;\n      color: #555;\n      margin-top: 10px;\n    }\n    .value {\n      margin-bottom: 10px;\n      line-height: 1.6;\n    }\n    .box {\n      background: #f8f9fa;\n      padding: 10px;\n      border-left: 4px solid #b00020;\n      border-radius: 5px;\n    }\n    .highlight {\n      color: red;\n      font-weight: bold;\n      font-size: 18px;\n    }\n    .btn {\n      display: inline-block;\n      background: #1a73e8;\n      color: #fff !important;\n      padding: 8px 15px;\n      text-decoration: none;\n      border-radius: 5px;\n      margin-top: 5px;\n    }\n    .alert {\n      background: #fff5f5;\n      padding: 15px;\n      border-radius: 8px;\n      margin-top: 20px;\n      border: 1px solid #ffd1d1;\n    }\n  </style>\n</head>\n\n<body>\n  <div class=\"container\">\n\n    <!-- TIÊU ĐỀ -->\n    <h2>Bài viết Google News cần theo dõi</h2>\n\n\n\n    <!-- NỘI DUNG -->\n    <div class=\"label\">Nội dung:</div>\n    <div class=\"value box\">\n     {{ $('Lưu bài viết Google News vào Sheets').item.json.TieuDe }}\n    </div>\n\n      \n    <div class=\"label\">Chủ đề:</div>\n    <div class=\"value box\">\n   {{ $json.ChuDe }}\n    </div>\n  \n    <!-- LINK -->\n    <div class=\"label\">Bài viết gốc:</div>\n    <a href=\"{{ $('Lưu bài viết Google News vào Sheets').item.json.UrlBaiViet }}\" class=\"btn\">Xem bài viết</a>\n\n    <!-- PHÂN TÍCH -->\n    <div class=\"alert\">\n\n      <div class=\"label\">Phần trăm tiêu cực:</div>\n      <div class=\"value highlight\">\n      {{ $json.PhanTramTieuCuc }}%\n      </div>\n\n      <div class=\"label\">Mức độ rủi ro:</div>\n      <div class=\"value\">\n        {{ $json.MucDoRuiRo || 'Không rõ' }}\n      </div>\n\n      <div class=\"label\">Đánh giá:</div>\n      <div class=\"value\">\n        {{ $json.DanhGia || 'Không có' }} Phân tích bài viết: {{ $json.PhanTichBaiViet }} Lý do dánh giá: {{ $json.LyDoDanhGia }}\n      </div>\n\n      <div class=\"label\">Đề xuất xử lý:</div>\n      <div class=\"value box\" style=\"border-left-color: orange;\">\n        {{ $json.DeXuatXuLy || 'Không có' }}\n      </div>\n\n      <div class=\"label\">Thời gian xử lý:</div>\n      <div class=\"value\">\n        {{ $json.NgayXuLy || 'Không rõ' }}\n      </div>\n\n    </div>\n\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        2120,
+        480
+      ],
+      "id": "e96b37d7-9e2f-4946-83e6-f3bf82495555",
+      "name": "Gửi cảnh báo tiêu cực từ Google News1",
+      "webhookId": "0e4746a8-0953-4816-b515-ddde7f605e25",
+      "credentials": {
+        "smtp": {
+          "id": "u9TNW1SRBYGnm2Wa",
+          "name": "SMTP account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU",
+          "mode": "list",
+          "cachedResultName": "BaiVietDanhGia",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -200,
+        20
+      ],
+      "id": "d831c879-5992-4e97-a1b5-5d1c646c5383",
+      "name": "Đọc dữ liệu tổng hợp báo cáo tuần",
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ==================== BÁO CÁO GIÁM SÁT MẠNG XÃ HỘI ====================\n// Dành cho Đồ án tốt nghiệp - ĐH Cửu Long\n// Xử lý dữ liệu đầu ra từ AI (dạng JSON như mẫu)\n\nconst ketQua = [];\n\n// --- 1. Xác định tuần báo cáo (tuần hiện tại, bắt đầu từ thứ Hai) ---\nconst now = new Date();\nconst day = now.getDay(); // 0: CN, 1: T2, ..., 6: T7\nconst monday = new Date(now);\nmonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));\nmonday.setHours(0, 0, 0, 0);\n\nconst sunday = new Date(monday);\nsunday.setDate(monday.getDate() + 6);\nsunday.setHours(23, 59, 59, 999);\n\n// Mã báo cáo: BC-YYYY-Wxx (dựa trên số tuần trong năm)\nconst weekNum = Math.ceil((monday - new Date(monday.getFullYear(), 0, 1)) / (7 * 24 * 60 * 60 * 1000));\nconst baoCaoID = `BC-${monday.getFullYear()}-W${weekNum}`;\n\n// --- 2. Khởi tạo các biến thống kê ---\nlet tong = 0;\nlet tieuCucCount = 0;      // CoTiengLong_MiaMai = true\nlet tongPhanTramTieuCuc = 0; // tổng % tiêu cực để tính trung bình\nlet mucDoCao = 0;\nlet mucDoTrungBinh = 0;\nlet mucDoThap = 0;\n\n// Lưu danh sách bài viết có rủi ro cao (để đưa ra đề xuất chi tiết)\nlet baiVietRuiRoCao = [];\n\n// Lưu các đề xuất nổi bật (từ trường DeXuatXuLy)\nlet xuLyKhuyenNghi = new Set();\n\n// --- 3. Duyệt từng bài viết trong input ---\n$input.all().forEach(item => {\n  const data = item.json;\n  tong++;\n\n  // Xác định tiêu cực dựa trên CoTiengLong_MiaMai (boolean) hoặc PhanTramTieuCuc > ngưỡng\n  const coTieuCuc = data.CoTiengLong_MiaMai === true || (data.PhanTramTieuCuc > 50);\n  if (coTieuCuc) tieuCucCount++;\n\n  // Cộng dồn % tiêu cực (nếu có)\n  const pTieuCuc = typeof data.PhanTramTieuCuc === 'number' ? data.PhanTramTieuCuc : 0;\n  tongPhanTramTieuCuc += pTieuCuc;\n\n  // Phân loại mức độ rủi ro\n  const mucDo = (data.MucDoRuiRo || '').toString().toLowerCase();\n  if (mucDo.includes('cao')) {\n    mucDoCao++;\n    // Lưu thông tin bài có rủi ro cao để báo cáo riêng\n    baiVietRuiRoCao.push({\n      TacGia: data.TacGia || 'Ẩn danh',\n      NoiDungTomTat: (data.NoiDung || '').substring(0, 120) + '...',\n      URL: data.URL,\n      PhanTramTieuCuc: pTieuCuc,\n      DeXuatXuLy: data.DeXuatXuLy || 'Chưa có đề xuất'\n    });\n  } else if (mucDo.includes('trung bình')) {\n    mucDoTrungBinh++;\n  } else {\n    mucDoThap++;\n  }\n\n  // Thu thập các đề xuất xử lý (không trùng lặp)\n  if (data.DeXuatXuLy && data.DeXuatXuLy.trim()) {\n    xuLyKhuyenNghi.add(data.DeXuatXuLy.trim());\n  }\n});\n\n// --- 4. Tính toán các chỉ số tổng hợp ---\nconst phanTramTieuCuc = tong > 0 ? ((tieuCucCount / tong) * 100).toFixed(1) : 0;\nconst diemTieuCucTB = tong > 0 ? (tongPhanTramTieuCuc / tong).toFixed(1) : 0;\n\n// --- 5. Đánh giá mức độ cảnh báo chung ---\nlet canhBaoChung = '';\nlet mauSac = '';\nif (phanTramTieuCuc >= 30 || mucDoCao > 3) {\n  canhBaoChung = 'CẢNH BÁO CAO - Cần can thiệp ngay';\n  mauSac = 'Đỏ';\n} else if (phanTramTieuCuc >= 10 || mucDoCao > 0) {\n  canhBaoChung = 'Theo dõi chặt - Có dấu hiệu tiêu cực';\n  mauSac = 'Cam';\n} else {\n  canhBaoChung = 'Bình thường - Tiếp tục giám sát';\n  mauSac = 'Xanh';\n}\n\n// --- 6. Tạo báo cáo kết quả ---\nconst baoCao = {\n  // Thông tin báo cáo\n  BaoCaoID: baoCaoID,\n  TuNgay: monday.toISOString().split('T')[0],\n  DenNgay: sunday.toISOString().split('T')[0],\n  ThoiGianTao: new Date().toLocaleString('vi-VN'),\n\n  // Thống kê số lượng\n  TongBaiViet: tong,\n  SoBaiCoDauHieuTieuCuc: tieuCucCount,\n  PhanTramTieuCuc: parseFloat(phanTramTieuCuc),\n  DiemTieuCucTrungBinh: parseFloat(diemTieuCucTB),\n\n  // Phân bố mức độ rủi ro\n  MucDoCao: mucDoCao,\n  MucDoTrungBinh: mucDoTrungBinh,\n  MucDoThap: mucDoThap,\n\n  // Đánh giá\n  CanhBao: canhBaoChung,\n  MauCanhBao: mauSac,\n\n  // Danh sách bài viết cần xử lý ngay (rủi ro cao)\n  BaiVietRuiRoCao: baiVietRuiRoCao,\n\n  // Các đề xuất xử lý tổng hợp (loại bỏ trùng)\n  CacDeXuatXuLy: Array.from(xuLyKhuyenNghi).slice(0, 10),\n\n  // Gợi ý hành động tiếp theo\n  HanhDongGoiY: (\n    mucDoCao > 0 ? `Có ${mucDoCao} bài viết mức độ ảnh hưởng CAO, cần phản hồi hoặc báo cáo lãnh đạo ngay. ` : ''\n  ) + (\n    tieuCucCount > 5 ? `Số lượng bài tiêu cực (${tieuCucCount}) vượt ngưỡng, cần họp rút kinh nghiệm.` : ''\n  ) || 'Tiếp tục giám sát định kỳ.'\n};\n\n// --- 7. Trả về kết quả (dạng array chứa object json) ---\nketQua.push({ json: baoCao });\nreturn ketQua;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "83b906b9-cb31-4a2a-8c24-9564b79d0b46",
+      "name": "Xử lý dữ liệu thống kê tuần"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1wFICpd2pBwjRnHlQiLgKjlBhr-N096HS4sDnvRKvokQ",
+          "mode": "list",
+          "cachedResultName": "Thong_Ke_Bao_cao_Tuan",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wFICpd2pBwjRnHlQiLgKjlBhr-N096HS4sDnvRKvokQ/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1wFICpd2pBwjRnHlQiLgKjlBhr-N096HS4sDnvRKvokQ/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "SoBaiVietTieuCuc": "={{ $json.SoBaiCoDauHieuTieuCuc }}",
+            "MucDoTrungBinh": "={{ $json.MucDoTrungBinh }}",
+            "MucDoCao": "={{ $json.MucDoCao }}",
+            "MucDoThap": "={{ $json.MucDoThap }}",
+            "CacBaiVietRuRo": "={{ $json.BaiVietRuiRoCao }}",
+            "CacDeXuatXuLY": "={{ $json.CacDeXuatXuLy }}",
+            "HanhDongGoiY": "={{ $json.HanhDongGoiY }}",
+            "TuNgay": "={{ $json.TuNgay }}",
+            "DenNgay": "={{ $json.DenNgay }}",
+            "TongBaiViet": "={{ $json.TongBaiViet }}",
+            "PhanTramTieuCuc": "={{ $json.PhanTramTieuCuc }}%"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "TuNgay",
+              "displayName": "TuNgay",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "DenNgay",
+              "displayName": "DenNgay",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "TongBaiViet",
+              "displayName": "TongBaiViet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "SoBaiVietTieuCuc",
+              "displayName": "SoBaiVietTieuCuc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "PhanTramTieuCuc",
+              "displayName": "PhanTramTieuCuc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "MucDoCao",
+              "displayName": "MucDoCao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "MucDoTrungBinh",
+              "displayName": "MucDoTrungBinh",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "MucDoThap",
+              "displayName": "MucDoThap",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CacBaiVietRuRo",
+              "displayName": "CacBaiVietRuRo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "CacDeXuatXuLY",
+              "displayName": "CacDeXuatXuLY",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "HanhDongGoiY",
+              "displayName": "HanhDongGoiY",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        280,
+        0
+      ],
+      "id": "3e3f9a16-9604-41f6-956b-b207dea01db1",
+      "name": "Ghi dữ liệu báo cáo tuần vào Sheets",
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "haulailaptrinh@gmail.com",
+        "toEmail": "trunghau231204@gmail.com",
+        "subject": "Báo cáo giám sát hàng ngày - ĐH Cửu Long",
+        "emailFormat": "html",
+        "html": "=<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      color: #333;\n      line-height: 1.6;\n    }\n    table {\n      border-collapse: collapse;\n      width: 100%;\n      margin-top: 10px;\n      margin-bottom: 20px;\n    }\n    th, td {\n      border: 1px solid #ddd;\n      padding: 10px;\n      text-align: center;\n    }\n    th {\n      background-color: #f2f2f2;\n      font-weight: bold;\n    }\n    h2 {\n      color: #2c3e50;\n      border-bottom: 2px solid #3498db;\n      padding-bottom: 5px;\n    }\n    h3 {\n      color: #2980b9;\n      margin-top: 25px;\n    }\n    .alert-box {\n      background-color: #fdf2f2;\n      border-left: 4px solid #e74c3c;\n      padding: 12px;\n      color: #c0392b;\n      font-weight: bold;\n      margin-bottom: 20px;\n    }\n    .post-card {\n      background-color: #f9f9f9;\n      border: 1px solid #e0e0e0;\n      padding: 15px;\n      margin-bottom: 15px;\n      border-radius: 5px;\n    }\n    .btn {\n      display: inline-block;\n      margin-top: 10px;\n      padding: 8px 12px;\n      background-color: #3498db;\n      color: #ffffff !important;\n      text-decoration: none;\n      border-radius: 4px;\n      font-size: 14px;\n    }\n  </style>\n</head>\n<body>\n  <h2>Báo cáo Giám sát Nội dung theo tuần</h2>\n  <p>📅 Thời gian: Từ <strong>{{ $json.TuNgay }}</strong> đến <strong>{{ $json.DenNgay }}</strong></p>\n\n  <div class=\"alert-box\">\n    ⚠️ Nhận xét hệ thống: {{ $json.HanhDongGoiY }}\n  </div>\n\n  <h3>1. Thống kê tổng quan</h3>\n  <table>\n    <tr>\n      <th>Mức độ</th>\n      <th>Số lượng</th>\n    </tr>\n    <tr>\n      <td style=\"color: #e74c3c;\"><strong>Cao (Rủi ro)</strong></td>\n      <td><strong>{{ $json.MucDoCao }}</strong></td>\n    </tr>\n    <tr>\n      <td style=\"color: #f39c12;\"><strong>Trung bình</strong></td>\n      <td>{{ $json.MucDoTrungBinh }}</td>\n    </tr>\n    <tr>\n      <td style=\"color: #27ae60;\"><strong>Thấp (An toàn)</strong></td>\n      <td>{{ $json.MucDoThap }}</td>\n    </tr>\n    <tr>\n      <th>Tổng số bài viết quét được</th>\n      <th>{{ $json.TongBaiViet }}</th>\n    </tr>\n    <tr>\n      <th>Tỷ lệ tiêu cực</th>\n      <th>{{ $json.PhanTramTieuCuc }}</th>\n    </tr>\n  </table>\n\n  <h3>2. Chi tiết các bài viết Rủi ro cao cần xử lý</h3>\n  \n  {{ $json.CacBaiVietRuRo && $json.CacBaiVietRuRo.length > 0 ? $json.CacBaiVietRuRo.map(post => `\n  <div class=\"post-card\">\n    <p style=\"margin: 0 0 8px 0;\"><strong>👤 Tác giả:</strong> ${post.TacGia}</p>\n    <p style=\"margin: 0 0 8px 0;\"><strong>📝 Tóm tắt nội dung:</strong> <em>\"${post.NoiDungTomTat}\"</em></p>\n    <p style=\"margin: 0 0 8px 0;\"><strong>⚠️ Độ tiêu cực:</strong> <span style=\"color: red; font-weight: bold;\">${post.PhanTramTieuCuc}%</span></p>\n    <p style=\"margin: 0 0 8px 0;\"><strong>💡 Đề xuất xử lý:</strong> ${post.DeXuatXuLy}</p>\n    <a href=\"${post.URL}\" target=\"_blank\" class=\"btn\">🔗 Chuyển đến bài viết gốc</a>\n  </div>\n  `).join('') : '<p style=\"color: green;\">✅ Tuần này không phát hiện bài viết rủi ro cao nào.</p>' }}\n\n  <p style=\"margin-top: 30px; font-style: italic; color: #7f8c8d;\">\n    Trân trọng,<br>\n    Hệ thống Cảnh báo tự động\n  </p>\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "id": "8a17c4bc-c33e-4617-acb8-3436db6fb032",
+      "name": "Gửi báo cáo cảnh báo tuần",
+      "webhookId": "0e4746a8-0953-4816-b515-ddde7f605e25",
+      "credentials": {
+        "smtp": {
+          "id": "u9TNW1SRBYGnm2Wa",
+          "name": "SMTP account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = items[0].json.body;\n\nreturn body.posts.map(post => {\n  return {\n    json: {\n      scraped_at: body.scraped_at,\n      author: post.author,\n      content: post.content,\n      post_url: post.post_url,\n      comments: post.comments.join(\" | \"),\n      comment_count: post.comments.length\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -180,
+        700
+      ],
+      "id": "18a4805d-ca02-43d5-a5b4-e2774d12518a",
+      "name": "Chuẩn hóa dữ liệu"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "value": "1C-8Pkvyqk78A_XRl-ztFg6Ul43uk8sOMzkpWCmg8CSE",
+          "mode": "list",
+          "cachedResultName": "BaiVietFB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C-8Pkvyqk78A_XRl-ztFg6Ul43uk8sOMzkpWCmg8CSE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C-8Pkvyqk78A_XRl-ztFg6Ul43uk8sOMzkpWCmg8CSE/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -180,
+        880
+      ],
+      "id": "52f4df8f-73f8-4564-8f4e-6cfd167708f3",
+      "name": "Đọc dữ liệu từ bài viết FB",
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        40,
+        760
+      ],
+      "id": "da9150ba-9343-455e-9f22-0d62b62402b1",
+      "name": "Gộp dữ liệu"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconsole.log('=== BẮT ĐẦU KIỂM TRA TRÙNG LẶP ===');\n\n// 1. Phân loại dữ liệu đầu vào\nconst oldArticles = [];  // Bài viết đã có trong Google Sheets\nconst newArticles = [];  // Bài viết mới từ webhook crawl\n\nitems.forEach(item => {\n  const data = item.json;\n  \n  // Dữ liệu từ Google Sheets (đã lưu) - có trường URLBaiViet\n  if (data.URLBaiViet) {\n    oldArticles.push(data);\n  } \n  // Dữ liệu mới từ crawl - có trường post_url\n  else if (data.post_url) {\n    newArticles.push(data);\n  }\n});\n\nconsole.log(`📚 Số bài viết cũ (trong Sheets): ${oldArticles.length}`);\nconsole.log(`🆕 Số bài viết mới (crawl được): ${newArticles.length}`);\n\n// 2. Hàm chuẩn hóa URL để so sánh chính xác\nfunction normalizeUrl(url) {\n  if (!url || typeof url !== 'string') return '';\n  return url\n    .toLowerCase()                // chuyển về chữ thường\n    .split('?')[0]                // bỏ query parameters (?fbclid=...)\n    .replace(/\\/$/, '')           // bỏ dấu / cuối cùng nếu có\n    .trim();\n}\n\n// 3. Tạo Set chứa các URL đã tồn tại (từ Google Sheets)\nconst existingUrls = new Set();\n\noldArticles.forEach(article => {\n  const link = normalizeUrl(article.URLBaiViet);\n  if (link) {\n    existingUrls.add(link);\n  }\n});\n\nconsole.log(`🔗 Số URL đã tồn tại: ${existingUrls.size}`);\n\n// 4. Lọc ra những bài viết mới chưa bị trùng\nconst uniqueArticles = [];\n\nnewArticles.forEach(article => {\n  const link = normalizeUrl(article.post_url);\n  \n  if (!link) {\n    console.warn('⚠️ Bài viết không có URL, bỏ qua:', article);\n    return;\n  }\n  \n  if (existingUrls.has(link)) {\n    console.log(` TRÙNG - Đã tồn tại: ${link}`);\n  } else {\n    console.log(` MỚI - Chưa có trong hệ thống: ${link}`);\n    uniqueArticles.push({\n      json: {\n        ...article,                    // giữ nguyên dữ liệu gốc (author, content, comments...)\n        URLBaiViet: article.post_url,  // map post_url thành URLBaiViet để lưu vào Sheets\n        NgayTao: article.scraped_at || new Date().toISOString() // thêm ngày tạo nếu chưa có\n      }\n    });\n  }\n});\n\nconsole.log(`📊 KẾT QUẢ: ${uniqueArticles.length} bài viết mới cần lưu`);\nconsole.log('=== KẾT THÚC KIỂM TRA ===');\n\n// 5. Trả về danh sách bài viết mới (đã được map đúng trường)\nreturn uniqueArticles;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        760
+      ],
+      "id": "c2e2b138-55b3-4461-b54c-8a0bc9d6ed17",
+      "name": "Kiểm tra trùng lặp",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1C-8Pkvyqk78A_XRl-ztFg6Ul43uk8sOMzkpWCmg8CSE",
+          "mode": "list",
+          "cachedResultName": "BaiVietFB",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C-8Pkvyqk78A_XRl-ztFg6Ul43uk8sOMzkpWCmg8CSE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1C-8Pkvyqk78A_XRl-ztFg6Ul43uk8sOMzkpWCmg8CSE/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "TacGia": "={{ $json.author }}",
+            "NoiDung": "={{ $json.content }}",
+            "URLBaiViet": "={{ $json.post_url }}",
+            "NgayTao": "={{ $json.scraped_at }}",
+            "BinhLuan": "={{ $json.comments }}{{ $json.comment_count }}",
+            "TongSoBinhLuan": "={{ $json.comment_count }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "TacGia",
+              "displayName": "TacGia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NoiDung",
+              "displayName": "NoiDung",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URLBaiViet",
+              "displayName": "URLBaiViet",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NgayTao",
+              "displayName": "NgayTao",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "BinhLuan",
+              "displayName": "BinhLuan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "TongSoBinhLuan",
+              "displayName": "TongSoBinhLuan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        380,
+        760
+      ],
+      "id": "9e50a3a9-729a-4047-9698-af0af97e7307",
+      "name": "Lưu bài viết vào file BaiVietFB",
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        580,
+        760
+      ],
+      "id": "81f47f1b-2fd9-4128-bbbb-167d25539752",
+      "name": "Lặp qua các bài viết"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<|im_start|>system\nBạn là chuyên gia phân tích dữ liệu mạng xã hội và đánh giá rủi ro thương hiệu cho Đại học Cửu Long (MKU/UCL). Nhiệm vụ: phân tích nội dung bài viết và bình luận để xác định mức độ tiêu cực (%), gán chủ đề, phát hiện tiếng lóng/mỉa mai, đánh giá rủi ro.\n<|im_end|>\n<|im_start|>\n===== DỮ LIỆU ĐẦU VÀO =====\n- Tác giả: {{ $json.TacGia }}\n- Nội dung bài viết: {{ $json.NoiDung }}\n- URL:{{ $('Lưu bài viết vào file BaiVietFB').item.json.URLBaiViet }}\n- Bình luận (đã gộp): {{ $json.BinhLuan }}\n- Tổng số bình luận: {{ $json.TongSoBinhLuan }}\n- Chủ đề: {{ $json.ChuDe }}\n- Tiếng lóng: {{ $json.CoTiengLong_MiaMai }}\n- Trăm tiêu cực: {{ $json.PhanTramTieuCuc }}\n- Đánh giá: {{ $json.DanhGia }}\n- Mức độ rủ ro: {{ $json.MucDoRuiRo }}\n- Đê xuất : {{ $json.DeXuatXuLy }}\n\nYÊU CẦU BỔ SUNG (KIỂM TRA & HIỆU CHỈNH DỮ LIỆU):\nHãy kiểm tra tính hợp lý của các trường dữ liệu đầu vào dựa trên nội dung bài viết và bình luận.\n\nNếu các giá trị đã phù hợp với nội dung → giữ nguyên.\nNếu không phù hợp / sai lệch / thiếu logic → tự động điều chỉnh lại cho chính xác.\n\nCác trường cần kiểm tra và hiệu chỉnh (nếu cần):\n\nChủ đề: {{ $json.ChuDe }}\nTiếng lóng / mỉa mai: {{ $json.CoTiengLong_MiaMai }}\nPhần trăm tiêu cực: {{ $json.PhanTramTieuCuc }}\nĐánh giá: {{ $json.DanhGia }}\nMức độ rủi ro: {{ $json.MucDoRuiRo }}\nĐề xuất xử lý: {{ $json.DeXuatXuLy }}\n\nLưu ý:\n\nViệc đánh giá phải bám sát nội dung thực tế, không suy đoán vô căn cứ.\nĐảm bảo logic nhất quán giữa: Phần trăm tiêu cực → Đánh giá → Mức độ rủi ro → Đề xuất xử lý.\nKhông để giá trị mâu thuẫn (ví dụ: % thấp nhưng lại đánh giá “Tiêu cực mạnh”).\n\n===== YÊU CẦU JSON ĐẦU RA =====\n{\n  \"TacGia\": \"...\",\n  \"NoiDung\": \"...\",\n  \"URL\": \"...\",\n  \"BinhLuan\": \"...\",\n  \"TongSoBinhLuan\": \"...\",\n  \"ChuDe\": [\"chủ đề 1\", \"chủ đề 2\"],\n  \"CoTiengLong_MiaMai\": true/false,\n  \"PhanTramTieuCuc\": 0-100,\n  \"DanhGia\": \"Trung tính / Bình thường\",\n  \"PhanTichBaiViet\": \"Tóm tắt ngắn\",\n  \"PhanTichBinhLuan\": \"Tóm tắt ngắn\",\n  \"LyDoDanhGia\": \"Giải thích lý do chấm điểm\",\n  \"MucDoRuiRo\": \"Thấp / Trung bình / Trung bình - Cao / Cao\",\n  \"DeXuatXuLy\": \"Hành động đề xuất\"\n}\n\n<|im_end|>\n<|im_start|>assistant\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        940,
+        780
+      ],
+      "id": "d0db9d8e-622a-4456-b3e2-449e46a5c35a",
+      "name": "Al phân tích"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen2.5-coder-7b-instruct",
+          "mode": "list",
+          "cachedResultName": "qwen2.5-coder-7b-instruct"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        900,
+        1000
+      ],
+      "id": "96ab65a4-afbe-4bae-8703-5df1b3081128",
+      "name": "OpenAI Chat Model  qwen2.5-coder-7b-instruct",
+      "credentials": {
+        "openAiApi": {
+          "id": "aIrAe7TnJZz3nZis",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const ketQua = [];\n\nfor (const item of items) {\n  const data = item.json;\n  const ngayXuLy = new Date().toLocaleString('vi-VN');\n\n  // Hàm lấy giá trị từ object với nhiều tên trường khả dụng\n  const getField = (obj, possibleKeys, defaultValue = '') => {\n    for (const key of possibleKeys) {\n      if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') return obj[key];\n    }\n    return defaultValue;\n  };\n\n  // Lấy output từ AI Agent (thường nằm ở data.output hoặc data.text)\n  let rawOutput = getField(data, ['output', 'text', 'message', 'content'], '');\n  let parsed = {};\n  \n  if (rawOutput && typeof rawOutput === 'string' && rawOutput.trim() !== '') {\n    let cleaned = rawOutput.trim();\n    \n    // Loại bỏ markdown code block ```json ... ``` hoặc ``` ... ```\n    cleaned = cleaned.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/```\\s*$/i, '').trim();\n    \n    // Nếu cleaned bắt đầu bằng '{' thì parse trực tiếp, nếu không thì tìm đoạn JSON trong chuỗi\n    let jsonString = cleaned;\n    if (!cleaned.startsWith('{')) {\n      const match = cleaned.match(/\\{[\\s\\S]*\\}/);\n      if (match) jsonString = match[0];\n    }\n    \n    try {\n      parsed = JSON.parse(jsonString);\n    } catch (e) {\n      console.error('Lỗi parse JSON lần 1:', e.message);\n      // Fallback: Sửa lại chuỗi JSON bị lỗi gạch đầu dòng và thiếu ngoặc kép của AI\n      try {\n        let fixed = jsonString.replace(/^\\s*-\\s*(.*?):\\s*(.*)$/gm, (match, key, value) => {\n          // Xóa dấu phẩy hoặc ngoặc kép ở cuối nếu có\n          let cleanValue = value.trim().replace(/,$/, '').replace(/\"$/, '').replace(/^\"/, '');\n          \n          // Nếu value là số thì không cần ngoặc kép\n          if (!isNaN(cleanValue) && cleanValue !== '') {\n            return `\"${key.trim()}\": ${cleanValue},`;\n          }\n          \n          // Chuyển escape ngoặc kép bên trong chuỗi để tránh lỗi JSON\n          cleanValue = cleanValue.replace(/\"/g, '\\\\\"');\n          return `\"${key.trim()}\": \"${cleanValue}\",`;\n        });\n\n        // Xử lý dấu phẩy thừa ở cuối object (trước dấu đóng })\n        fixed = fixed.replace(/,\\s*\\}/g, '}');\n\n        parsed = JSON.parse(fixed);\n      } catch (e2) {\n        console.error('Lỗi fallback parse lần 2:', e2.message);\n      }\n    }\n  } else if (typeof rawOutput === 'object') {\n    // Nếu output đã là object thì dùng trực tiếp\n    parsed = rawOutput;\n  }\n  \n  // Xác định các trường với nhiều tên khả dụng\n  const tacGia = getField(parsed, ['Tác giả', 'TacGia', 'author'], getField(data, ['Tác giả', 'TacGia', 'author'], ''));\n  const noiDung = getField(parsed, ['Nội dung bài viết', 'NoiDung', 'content'], getField(data, ['Nội dung bài viết', 'NoiDung', 'content'], ''));\n  const url = getField(parsed, ['URL', 'url', 'Url'], getField(data, ['URL', 'url', 'Url'], ''));\n  const binhLuan = getField(parsed, ['Bình luận (đã gộp)', 'BinhLuan', 'comments'], getField(data, ['Bình luận (đã gộp)', 'BinhLuan', 'comments'], ''));\n  const tongSoBinhLuan = parseInt(getField(parsed, ['Tổng số bình luận', 'TongSoBinhLuan', 'commentCount'], getField(data, ['Tổng số bình luận', 'TongSoBinhLuan', 'commentCount'], 0)), 10);\n  \n  // Trường ChuDe: có thể là mảng hoặc chuỗi\n  let chuDeArray = [];\n  const rawChuDe = getField(parsed, ['ChuDe', 'Chủ đề', 'topic'], getField(data, ['ChuDe', 'Chủ đề', 'topic'], ''));\n  if (Array.isArray(rawChuDe)) {\n    chuDeArray = rawChuDe;\n  } else if (typeof rawChuDe === 'string' && rawChuDe !== '') {\n    chuDeArray = [rawChuDe];\n  } else {\n    chuDeArray = ['CHƯA XÁC ĐỊNH'];\n  }\n  \n  const result = {\n    TacGia: tacGia,\n    NoiDung: noiDung,\n    URL: url,\n    BinhLuan: binhLuan,\n    TongSoBinhLuan: isNaN(tongSoBinhLuan) ? 0 : tongSoBinhLuan,\n    ChuDe: chuDeArray,\n    LinhVuc: getField(parsed, ['LinhVuc', 'Lĩnh vực', 'domain'], getField(data, ['LinhVuc', 'Lĩnh vực', 'domain'], 'CHƯA XÁC ĐỊNH')),\n    CoTiengLong_MiaMai: getField(parsed, ['CoTiengLong_MiaMai', 'coTiengLongMiaMai', 'sarcasm'], getField(data, ['CoTiengLong_MiaMai', 'coTiengLongMiaMai', 'sarcasm'], false)) === true,\n    PhanTramTieuCuc: Number(getField(parsed, ['PhanTramTieuCuc', 'phanTramTieuCuc', 'negativePercent'], getField(data, ['PhanTramTieuCuc', 'phanTramTieuCuc', 'negativePercent'], 0))) || 0,\n    DanhGia: getField(parsed, ['DanhGia', 'Đánh giá', 'assessment'], getField(data, ['DanhGia', 'Đánh giá', 'assessment'], 'CHƯA XÁC ĐỊNH')),\n    PhanTichBaiViet: getField(parsed, ['PhanTichBaiViet', 'Phân tích bài viết', 'postAnalysis'], getField(data, ['PhanTichBaiViet', 'Phân tích bài viết', 'postAnalysis'], '')),\n    PhanTichBinhLuan: getField(parsed, ['PhanTichBinhLuan', 'Phân tích bình luận', 'commentAnalysis'], getField(data, ['PhanTichBinhLuan', 'Phân tích bình luận', 'commentAnalysis'], '')),\n    LyDoDanhGia: getField(parsed, ['LyDoDanhGia', 'Lý do đánh giá', 'reason'], getField(data, ['LyDoDanhGia', 'Lý do đánh giá', 'reason'], '')),\n    MucDoRuiRo: getField(parsed, ['MucDoRuiRo', 'Mức độ rủi ro', 'riskLevel'], getField(data, ['MucDoRuiRo', 'Mức độ rủi ro', 'riskLevel'], 'CHƯA XÁC ĐỊNH')),\n    DeXuatXuLy: getField(parsed, ['DeXuatXuLy', 'Đề xuất xử lý', 'suggestion'], getField(data, ['DeXuatXuLy', 'Đề xuất xử lý', 'suggestion'], 'Không cần xử lý')),\n    NgayXuLy: ngayXuLy\n  };\n  \n  ketQua.push({ json: result });\n}\n\nreturn ketQua;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        780
+      ],
+      "id": "97aa73f4-ae41-4708-b637-907b47fbc9dd",
+      "name": "Chuẩn hóa kết quả bằng AI"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU",
+          "mode": "list",
+          "cachedResultName": "BaiVietDanhGia",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1qaJXtrbxi8Dhk67P15rsb0pQDgmXMD2gd02j2mIN4LU/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "TacGia": "={{ $json.TacGia }}",
+            "NoiDung": "={{ $json.NoiDung }}",
+            "URL": "={{ $json.URL }}",
+            "ChuDe": "={{ $json.ChuDe }}",
+            "CoTiengLong_MiaMai": "={{ $json.CoTiengLong_MiaMai }}",
+            "PhanTramTieuCuc": "={{ $json.PhanTramTieuCuc }}",
+            "DanhGia": "=Đánh giá: {{ $json.DanhGia }} Phân tích bài viết: {{ $json.PhanTichBaiViet }} Phân tích bình luận: {{ $json.PhanTichBinhLuan }} Lý do dánh giá: {{ $json.LyDoDanhGia }}",
+            "MucDoRuiRo": "={{ $json.MucDoRuiRo }}",
+            "DeXuatXuLy": "={{ $json.DeXuatXuLy }}",
+            "NgayXuLy": "={{ $json.NgayXuLy }}",
+            "BinhLuan": "={{ $json.BinhLuan }} Tổng số linhg luận: {{ $json.TongSoBinhLuan }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "TacGia",
+              "displayName": "TacGia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NoiDung",
+              "displayName": "NoiDung",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "URL",
+              "displayName": "URL",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "BinhLuan",
+              "displayName": "BinhLuan",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ChuDe",
+              "displayName": "ChuDe",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "CoTiengLong_MiaMai",
+              "displayName": "CoTiengLong_MiaMai",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "PhanTramTieuCuc",
+              "displayName": "PhanTramTieuCuc",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DanhGia",
+              "displayName": "DanhGia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "MucDoRuiRo",
+              "displayName": "MucDoRuiRo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "DeXuatXuLy",
+              "displayName": "DeXuatXuLy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "NgayXuLy",
+              "displayName": "NgayXuLy",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1540,
+        760
+      ],
+      "id": "a8b29a22-0914-47c9-b4bd-4078139ee91a",
+      "name": "Lưu bài viết vào file BaiVietDanhGia",
+      "credentials": {
+        "googleApi": {
+          "id": "bDfKP49GQmA772n5",
+          "name": "API Sheets"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2e7155b1-b0af-4378-9b11-d09df8e79634",
+              "leftValue": "={{ $json.PhanTramTieuCuc }}",
+              "rightValue": 50,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1740,
+        800
+      ],
+      "id": "f81cc5b3-a5fc-4073-9c8c-e2cd5e0465b9",
+      "name": "Nếu phần trăm tiêu cực lớn hơn 50%"
+    },
+    {
+      "parameters": {
+        "fromEmail": "haulailaptrinh@gmail.com",
+        "toEmail": "trunghau231204@gmail.com",
+        "subject": "Báo cáo giám sát hàng ngày - ĐH Cửu Long",
+        "emailFormat": "html",
+        "html": "=<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"UTF-8\">\n  <style>\n    body {\n      font-family: Arial, sans-serif;\n      background: #f4f7f6;\n      padding: 20px;\n    }\n    .container {\n      background: #fff;\n      padding: 25px;\n      border-radius: 10px;\n      max-width: 650px;\n      margin: auto;\n      border-top: 5px solid #b00020;\n    }\n    h2 {\n      color: #b00020;\n      margin-bottom: 15px;\n    }\n    .label {\n      font-weight: bold;\n      color: #555;\n      margin-top: 10px;\n    }\n    .value {\n      margin-bottom: 10px;\n      line-height: 1.6;\n    }\n    .box {\n      background: #f8f9fa;\n      padding: 10px;\n      border-left: 4px solid #b00020;\n      border-radius: 5px;\n    }\n    .highlight {\n      color: red;\n      font-weight: bold;\n      font-size: 18px;\n    }\n    .btn {\n      display: inline-block;\n      background: #1a73e8;\n      color: #fff !important;\n      padding: 8px 15px;\n      text-decoration: none;\n      border-radius: 5px;\n      margin-top: 5px;\n    }\n    .alert {\n      background: #fff5f5;\n      padding: 15px;\n      border-radius: 8px;\n      margin-top: 20px;\n      border: 1px solid #ffd1d1;\n    }\n  </style>\n</head>\n\n<body>\n  <div class=\"container\">\n\n    <!-- TIÊU ĐỀ -->\n    <h2>Bài viết Facebook cần theo dõi</h2>\n\n    <!-- TÁC GIẢ -->\n    <div class=\"label\">Tác giả:</div>\n    <div class=\"value\">\n      {{ $json.TacGia || 'Ẩn danh' }}\n    </div>\n\n    <!-- NỘI DUNG -->\n    <div class=\"label\">Nội dung:</div>\n    <div class=\"value box\">\n      {{ $json.NoiDung || 'Không có nội dung' }}\n    </div>\n\n    <!-- CHỦ ĐỀ -->\n    <div class=\"label\">Chủ đề:</div>\n    <div class=\"value\">\n      {{ Array.isArray($json.ChuDe) ? $json.ChuDe.join(', ') : $json.ChuDe }}\n    </div>\n\n    <!-- LINK -->\n    <div class=\"label\">Bài viết gốc:</div>\n    <a href=\"{{ $json.URL }}\" class=\"btn\">Xem bài viết</a>\n\n    <!-- PHÂN TÍCH -->\n    <div class=\"alert\">\n\n      <div class=\"label\">Phần trăm tiêu cực:</div>\n      <div class=\"value highlight\">\n        {{ $json.PhanTramTieuCuc || 0 }}%\n      </div>\n\n      <div class=\"label\">Mức độ rủi ro:</div>\n      <div class=\"value\">\n        {{ $json.MucDoRuiRo || 'Không rõ' }}\n      </div>\n\n      <div class=\"label\">Đánh giá:</div>\n      <div class=\"value\">\n        {{ $json.DanhGia || 'Không có' }}\n      </div>\n\n      <div class=\"label\">Đề xuất xử lý:</div>\n      <div class=\"value box\" style=\"border-left-color: orange;\">\n        {{ $json.DeXuatXuLy || 'Không có' }}\n      </div>\n\n      <div class=\"label\">Thời gian xử lý:</div>\n      <div class=\"value\">\n        {{ $json.NgayXuLy || 'Không rõ' }}\n      </div>\n\n    </div>\n\n    <!-- BÌNH LUẬN -->\n    <div class=\"label\">Bình luận:</div>\n    <div class=\"value box\">\n      {{ $json.BinhLuan ? $json.BinhLuan.replace(/\\|/g, '<br>') : 'Không có bình luận' }}\n    </div>\n\n  </div>\n</body>\n</html>",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        980
+      ],
+      "id": "c1821d8b-ad17-4a55-a768-d9fd68cb77ce",
+      "name": "Gửi cảnh báo tiêu cực các bài viết FB",
+      "webhookId": "0e4746a8-0953-4816-b515-ddde7f605e25",
+      "credentials": {
+        "smtp": {
+          "id": "u9TNW1SRBYGnm2Wa",
+          "name": "SMTP account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1400,
+        240
+      ],
+      "id": "9f42c727-b38e-4cdc-8ae2-263a858bac65",
+      "name": "Lặp qua từng bài viết"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=<|im_start|>system\nBạn là AI giám sát thương hiệu Đại học Cửu Long (MKU/UCL). Phân tích nội dung bài viết và bình luận bên dưới. Trả về DUY NHẤT một JSON hợp lệ, không thêm bất kỳ văn bản nào ngoài JSON.\n\nQUY TẮC BẮT BUỘC:\n1. LUÔN gán mảng ChuDe với ít nhất 1 chủ đề (KHÔNG được để rỗng hoặc \"CHƯA XÁC ĐỊNH\").\n   - Nếu bài viết có từ khóa tiêu cực → chọn chủ đề phù hợp từ: Đào tạo, Tuyển sinh, Quản lý, Cơ sở vật chất, Khủng hoảng, Hợp tác, Sự kiện, Hoạt động sinh viên.\n   - Nếu không có từ khóa → suy luận từ nội dung: \"Đời sống sinh viên\", \"Hỏi thông tin\", \"Rao vặt\", \"Tán gẫu\", \"Chia sẻ cá nhân\", \"Thảo luận học tập\".\nnếu ≥70%.\n5. CoTiengLong_MiaMai = true nếu có bất kỳ từ lóng hoặc cụm mỉa mai nào.\n6. DeXuatXuLy: nếu ≤20% → \"Không cần xử lý\"; 21-49% → \"Theo dõi nhẹ\"; ≥50% → đề xuất hành động cụ thể.\n<|im_end|>\n<|im_start|>\nQUY TẮC QUAN TRỌNG\nDỮ LIỆU ĐẦU VÀO:\n- Nội dung bài viết: {{ $json.TieuDe }}\n- URL: {{ $json.UrlBaiViet }}\n- Ngày đăng: {{ $json.NgayDang }}\n\n\n========================================\nĐỊNH DẠNG JSON ĐẦU RA (BẮT BUỘC)\n========================================\n{\n  \"Nội dung bài viết\": {{ $json.TieuDe }}\n  \"URL\": {{ $json.UrlBaiViet }}\n  \"Ngày đăng\": {{ $json.NgayDang }}\n  \"ChuDe\": [\"chủ đề 1\", \"chủ đề 2\"],\n  \"CoTiengLong_MiaMai\": true/false,\n  \"PhanTramTieuCuc\": 0-100,\n  \"DanhGia\": \"Trung tính / Bình thường\",\n  \"PhanTichBaiViet\": \"Tóm tắt các từ khóa/cụm tiêu cực trong bài viết\",\n  \"PhanTichBinhLuan\": \"Tóm tắt bình luận tiêu cực chính\",\n  \"LyDoDanhGia\": \"Giải thích chi tiết lý do chấm điểm (liệt kê từ khóa, tiếng lóng, mỉa mai)\",\n  \"MucDoRuiRo\": \"Thấp / Trung bình / Cao\",\n  \"DeXuatXuLy\": \"Gợi ý xử lý cụ thể\"\n}\n\nLƯU Ý: Nếu không có từ khóa tiêu cực, set PhanTramTieuCuc ≤20, MucDoRuiRo=\"Thấp\", DanhGia=\"Trung tính / Bình thường\", DeXuatXuLy=\"Không cần xử lý\". LUÔN gán ChuDe (không được rỗng).\n<|im_end|>\n<|im_start|>assistant\n\n",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        1600,
+        300
+      ],
+      "id": "8e4ca2f6-d546-4757-8a22-1844b51eec03",
+      "name": "AI phân tích"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "qwen2.5-coder-7b-instruct",
+          "mode": "list",
+          "cachedResultName": "qwen2.5-coder-7b-instruct"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1520,
+        500
+      ],
+      "id": "0fcdf089-6749-4e57-99b6-a01fff6292cb",
+      "name": "OpenAI Chat Model  qwen2.5-coder-7b-instruct1",
+      "credentials": {
+        "openAiApi": {
+          "id": "aIrAe7TnJZz3nZis",
+          "name": "OpenAi account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "75446985-1a01-4f45-b6e0-931cd3e98cd6",
+      "name": "Kích hoạt định kỳ thu thập dữ liệu theo giờ",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -440,
+        300
+      ],
+      "typeVersion": 1.2,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtHour": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [
+        -440,
+        20
+      ],
+      "name": "Kích hoạt định kỳ thu thập dữ liệu theo tuần",
+      "id": "0a67c757-dd78-4242-bb03-31cdb54e149e"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "facebook-monitor",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -420,
+        760
+      ],
+      "id": "d59689a8-8d9b-4ae2-9c82-d1c15e99e911",
+      "name": "Webhook",
+      "webhookId": "15e62163-4baa-463e-b302-93fda400fbf8",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://robots-supervision-cancel-writing.trycloudflare.com/analyze",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "TacGia",
+              "value": "={{ $json.TacGia }}"
+            },
+            {
+              "name": "NoiDung",
+              "value": "={{ $json.NoiDung }}"
+            },
+            {
+              "name": "URLBaiViet",
+              "value": "={{ $json.URLBaiViet }}"
+            },
+            {
+              "name": "BinhLuan",
+              "value": "={{ $json.BinhLuan }}"
+            },
+            {
+              "name": "TongSoBinhLuan",
+              "value": "={{ $json.TongSoBinhLuan }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "timeout": 12000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        740,
+        840
+      ],
+      "id": "4e332e9a-bdac-4dd5-84af-57b8cfe5a9a3",
+      "name": "HTTP FastAPI"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        240
+      ],
+      "id": "a0aa2a26-f662-449c-8938-af29896dcb40",
+      "name": "Limit"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cấu hình từ khóa giám sát": {
+      "main": [
+        [
+          {
+            "node": "Thu thập dữ liệu Google News (RSS)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Đọc dữ liệu Google News đã lưu (Sheets)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Thu thập dữ liệu Google News (RSS)": {
+      "main": [
+        [
+          {
+            "node": "Phân tích và trích xuất bài báo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Phân tích và trích xuất bài báo": {
+      "main": [
+        [
+          {
+            "node": "Gộp dữ liệu Google News mới và cũ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra bài viết đã tồn tại": {
+      "main": [
+        [
+          {
+            "node": "Lọc bài viết hợp lệ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lọc bài viết hợp lệ": {
+      "main": [
+        [
+          {
+            "node": "Lưu bài viết Google News vào Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc dữ liệu Google News đã lưu (Sheets)": {
+      "main": [
+        [
+          {
+            "node": "Gộp dữ liệu Google News mới và cũ",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Gộp dữ liệu Google News mới và cũ": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra bài viết đã tồn tại",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn hóa dữ liệu Google News": {
+      "main": [
+        [
+          {
+            "node": "Lưu kết quả đánh giá Google News",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gửi cảnh báo tiêu cực từ Google News1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lưu bài viết Google News vào Sheets": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lưu kết quả đánh giá Google News": {
+      "main": [
+        [
+          {
+            "node": "Lặp qua từng bài viết",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi cảnh báo tiêu cực từ Google News1": {
+      "main": [
+        [
+          {
+            "node": "Lặp qua từng bài viết",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc dữ liệu tổng hợp báo cáo tuần": {
+      "main": [
+        [
+          {
+            "node": "Xử lý dữ liệu thống kê tuần",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Xử lý dữ liệu thống kê tuần": {
+      "main": [
+        [
+          {
+            "node": "Ghi dữ liệu báo cáo tuần vào Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ghi dữ liệu báo cáo tuần vào Sheets": {
+      "main": [
+        [
+          {
+            "node": "Gửi báo cáo cảnh báo tuần",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn hóa dữ liệu": {
+      "main": [
+        [
+          {
+            "node": "Gộp dữ liệu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Đọc dữ liệu từ bài viết FB": {
+      "main": [
+        [
+          {
+            "node": "Gộp dữ liệu",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Gộp dữ liệu": {
+      "main": [
+        [
+          {
+            "node": "Kiểm tra trùng lặp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kiểm tra trùng lặp": {
+      "main": [
+        [
+          {
+            "node": "Lưu bài viết vào file BaiVietFB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lưu bài viết vào file BaiVietFB": {
+      "main": [
+        [
+          {
+            "node": "Lặp qua các bài viết",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lặp qua các bài viết": {
+      "main": [
+        [],
+        [
+          {
+            "node": "HTTP FastAPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Al phân tích": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa kết quả bằng AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model  qwen2.5-coder-7b-instruct": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Al phân tích",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chuẩn hóa kết quả bằng AI": {
+      "main": [
+        [
+          {
+            "node": "Lưu bài viết vào file BaiVietDanhGia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lưu bài viết vào file BaiVietDanhGia": {
+      "main": [
+        [
+          {
+            "node": "Nếu phần trăm tiêu cực lớn hơn 50%",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Nếu phần trăm tiêu cực lớn hơn 50%": {
+      "main": [
+        [
+          {
+            "node": "Gửi cảnh báo tiêu cực các bài viết FB",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lặp qua các bài viết",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gửi cảnh báo tiêu cực các bài viết FB": {
+      "main": [
+        [
+          {
+            "node": "Lặp qua các bài viết",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lặp qua từng bài viết": {
+      "main": [
+        [],
+        [
+          {
+            "node": "AI phân tích",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI phân tích": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa dữ liệu Google News",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model  qwen2.5-coder-7b-instruct1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI phân tích",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kích hoạt định kỳ thu thập dữ liệu theo giờ": {
+      "main": [
+        [
+          {
+            "node": "Cấu hình từ khóa giám sát",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kích hoạt định kỳ thu thập dữ liệu theo tuần": {
+      "main": [
+        [
+          {
+            "node": "Đọc dữ liệu tổng hợp báo cáo tuần",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Chuẩn hóa dữ liệu",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Đọc dữ liệu từ bài viết FB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP FastAPI": {
+      "main": [
+        [
+          {
+            "node": "Al phân tích",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Lặp qua từng bài viết",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "324e9014-7b3a-434f-a989-ce97d87b6632",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "dc11cb4891443fae026bd649ce2af9b7a75f9d81700ccc3935ac1d32053faa0e"
+  },
+  "id": "jhQrZTSKUlOXDVlZ",
+  "tags": []
+}
